@@ -18,13 +18,13 @@ FetchContent_MakeAvailable(ftxui)
 add_library(JiPP_project_smartArray
         src/smartArray/SmartArray.cpp
         src/smartArray/SmartArray.h
-        src/dragon/dragon.cpp
-        src/dragon/dragon.h)
+        src/book/book.cpp
+        src/book/book.h)
 
 add_executable(JiPP_project_app
         src/app/main.cpp
-        src/dragon/dragon.cpp
-        src/dragon/dragon.h
+        src/book/book.cpp
+        src/book/book.h
 )
 
 target_link_libraries(JiPP_project_app JiPP_project_smartArray)

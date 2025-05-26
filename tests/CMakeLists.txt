@@ -13,8 +13,8 @@ include(CTest)
 enable_testing()
 
 add_executable(smartAraay_tests tests.cpp
-        ../src/dragon/dragon.cpp
-        ../src/dragon/dragon.h)
+        ../src/book/book.cpp
+        ../src/book/book.h)
 
 target_link_libraries(smartAraay_tests JiPP_project_smartArray)
 
