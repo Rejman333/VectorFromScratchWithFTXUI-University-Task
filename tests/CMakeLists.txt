@@ -14,7 +14,9 @@ enable_testing()
 
 add_executable(smartAraay_tests tests.cpp
         ../src/book/book.cpp
-        ../src/book/book.h)
+        ../src/book/book.h
+        ../src/app/App.cpp
+        ../src/app/App.h)
 
 target_link_libraries(smartAraay_tests JiPP_project_smartArray)
 
