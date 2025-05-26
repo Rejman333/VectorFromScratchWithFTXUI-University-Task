@@ -89,16 +89,14 @@ unsigned int Book::get_total_revenue() const {
 std::string Book::get_price_str() const {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2)
-        << static_cast<double>(price) / 100.0
-        << " PLN";
+        << static_cast<double>(price) / 100.0;
     return oss.str();
 }
 
 std::string Book::get_total_revenue_str() const {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2)
-        << static_cast<double>(get_total_revenue()) / 100.0
-        << " PLN";
+        << static_cast<double>(get_total_revenue()) / 100.0;
     return oss.str();
 }
 
