@@ -7,17 +7,17 @@
 #include "ftxui/component/component_options.hpp"
 
 
-static bool isNumber(const std::string &s) {
-    return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+static bool is_number(const std::string &s) {
+    return !s.empty() && std::ranges::all_of(s, ::isdigit);
 }
 
 App::App(): books_db(SmartArray<Book>()) {
 }
 
-void App::showPopUp(const std::string &message) {
-    Component okBtn = Button("  OK  ", screen.ExitLoopClosure());
+void App::show_pop_up(const std::string &message) {
+    Component ok_button = Button("  OK  ", screen.ExitLoopClosure());
 
-    auto container = Container::Vertical({okBtn});
+    auto container = Container::Vertical({ok_button});
 
     auto renderer = Renderer(container, [&] {
         return vbox({
@@ -29,7 +29,7 @@ void App::showPopUp(const std::string &message) {
                               filler()
                           })),
                    separator(),
-                   hbox({filler(), okBtn->Render(), filler()})
+                   hbox({filler(), ok_button->Render(), filler()})
                }) | center;
     });
 
@@ -39,10 +39,10 @@ void App::showPopUp(const std::string &message) {
 void App::save_books_to_bin() {
     std::ofstream out(binFile, std::ios::binary);
     if (!out) {
-        throw std::runtime_error("Nie można otworzyć pliku do zapisu.");
+        throw std::runtime_error("Failed to open a file.");
     }
 
-    size_t count = books_db.size();
+    const size_t count = books_db.size();
     out.write(reinterpret_cast<const char *>(&count), sizeof(count));
 
     for (size_t i = 0; i < books_db.size(); i++) {
@@ -64,14 +64,13 @@ void App::save_books_to_bin() {
 void App::load_books_from_bin() {
     std::ifstream in(binFile, std::ios::binary);
     if (!in) {
-        throw std::runtime_error("Nie można otworzyć pliku do odczytu.");
+        throw std::runtime_error("Failed to open a file.");
     }
 
     size_t count;
     in.read(reinterpret_cast<char *>(&count), sizeof(count));
 
-    //ToDo debug this
-    //books_db.reserve(books_db.size() + count);
+    books_db.reserve(books_db.size() + count);
 
     for (size_t i = 0; i < count; ++i) {
         size_t isbn_len;
@@ -96,16 +95,16 @@ void App::load_books_from_bin() {
     }
 }
 
-void App::showMenu() {
+void App::show_menu() {
     int selectedOption = 0;
     MenuOption menuOption;
     menuOption.on_enter = screen.ExitLoopClosure();
 
     Component menu = Menu(&menuEntries, &selectedOption, menuOption);
 
-    auto root = Container::Vertical({menu});
+    const auto root = Container::Vertical({menu});
 
-    auto renderer = Renderer(root, [&] {
+    const auto renderer = Renderer(root, [&] {
         return vbox({
                    text("=== Main Menu ===") | bold | center,
                    separator(),
@@ -119,23 +118,33 @@ void App::showMenu() {
 }
 
 void App::showListBooksScreen() {
-    // --- text filter ---
-    std::string filterStr;
-    Component filterInput = Input(&filterStr);
+    unsigned int number_of_books_after_filter = 0;
+    unsigned int all_sells = 0;
+    unsigned int all_price = 0;
 
-    // --- range from / to ---
-    std::string rangeFromStr;
-    std::string rangeToStr;
-    Component rangeFromInput = Input(&rangeFromStr);
-    Component rangeToInput = Input(&rangeToStr);
+    std::vector<std::string> authors_strings(authors.begin(), authors.end());
+    authors_strings.emplace_back("None");
 
-    // --- vector of persistent rows ---
-    std::vector<Component> rowComps;
+    //Setting up filters
+    std::string filter_ISBN_str;
+    std::string filter_title_str;
+    int author_stop_id = static_cast<int>(authors_strings.size()) - 1;
+    int filter_author_id = author_stop_id;
 
-    // helper to build a row
-    const std::vector authors_strings(authors.begin(), authors.end());
-    auto makeRow = [&](unsigned index) {
-        auto editBtn = Button("Edytuj", [&, index] {
+    Component filter_ISBN_input = Input(&filter_ISBN_str);
+    Component filter_title_input = Input(&filter_title_str);
+    Component filter_author_id_input = Dropdown(authors_strings, &filter_author_id);
+
+    //Setting up range operators
+    std::string range_from_str;
+    std::string range_to_str;
+    Component range_from_input = Input(&range_from_str);
+    Component range_to_input = Input(&range_to_str);
+
+
+    std::vector<Component> row_components;
+    auto makeRow = [&](size_t index) {
+        auto edit_button = Button("Edit", [&, index] {
             std::string ISBN = books_db[index].ISBN;
             std::string title = books_db[index].title;
             std::string price_str = std::to_string(books_db[index].price);
@@ -151,114 +160,170 @@ void App::showListBooksScreen() {
             Component save = Button("Save", [&, index] {
                 if (!ISBN.empty()) books_db[index].ISBN = ISBN;
                 if (!title.empty()) books_db[index].title = title;
-                if (isNumber(price_str)) books_db[index].price = std::stoi(price_str);
-                if (isNumber(copies_sold_str)) books_db[index].price = std::stoi(copies_sold_str);
+                if (is_number(price_str)) books_db[index].price = std::stoi(price_str);
+                if (is_number(copies_sold_str)) books_db[index].copies_sold = std::stoi(copies_sold_str);
+                books_db[index].author_id = selected_author;
                 screen.ExitLoopClosure()();
             });
             Component cancel = Button("Cancel", screen.ExitLoopClosure());
 
-            auto dialog = Renderer(Container::Vertical({
-                                       input_ISBN, input_title, input_price_str, input_copies_sold_str,
-                                       input_selected_author, save, cancel
-                                   }), [&] {
-                                       return vbox({
-                                                  text("===Edit Screen===") | bold | center,
-                                                  separator(),
-                                                  window(text(" Book Form "), vbox(
-                                                             hbox({text("ISBN         : "), input_ISBN->Render()}),
-                                                             hbox({text("Title        : "), input_title->Render()}),
-                                                             hbox({text("Price [gr]   : "), input_price_str->Render()}),
-                                                             hbox({
-                                                                 text("Copies Sold  : "),
-                                                                 input_copies_sold_str->Render()
-                                                             }),
-                                                             hbox({
-                                                                 text("Author       : "),
-                                                                 input_selected_author->Render()
-                                                             })
+            auto form_component = Renderer(Container::Vertical({
+                                               input_ISBN, input_title, input_price_str, input_copies_sold_str,
+                                               input_selected_author, save, cancel
+                                           }), [&] {
+                                               return vbox({
+                                                          text("===Edit Screen===") | bold | center,
+                                                          separator(),
+                                                          window(text(" Book Form "), vbox(
+                                                                     hbox({
+                                                                         text("ISBN         : "), input_ISBN->Render()
+                                                                     }),
+                                                                     hbox({
+                                                                         text("Title        : "), input_title->Render()
+                                                                     }),
+                                                                     hbox({
+                                                                         text("Price [gr]   : "),
+                                                                         input_price_str->Render()
+                                                                     }),
+                                                                     hbox({
+                                                                         text("Copies Sold  : "),
+                                                                         input_copies_sold_str->Render()
+                                                                     }),
+                                                                     hbox({
+                                                                         text("Author       : "),
+                                                                         input_selected_author->Render()
+                                                                     })
 
-                                                         )),
-                                                  separator(),
-                                                  hbox({save->Render(), text("   "), cancel->Render()})| center
-                                              }) | center;
-                                   });
-            screen.Loop(dialog);
+                                                                 )),
+                                                          separator(),
+                                                          hbox({save->Render(), text("   "), cancel->Render()}) | center
+                                                      }) | center;
+                                           });
+            screen.Loop(form_component);
         });
 
-        auto delBtn = Button("Delete", [&, index] {
+        auto delete_button = Button("Delete", [&, index] {
             bool confirmed = false;
-            Component yesBtn = Button("Yes", [&] {
+            Component yes_button = Button("Yes", [&] {
                 confirmed = true;
                 screen.ExitLoopClosure()();
             }) | center;
             filler();
-            Component noBtn = Button("No ", screen.ExitLoopClosure());
-            auto confirmView = Renderer(Container::Vertical({yesBtn, noBtn}), [&] {
+            Component no_button = Button("No ", screen.ExitLoopClosure());
+            auto popup_component = Renderer(Container::Vertical({yes_button, no_button}), [&] {
                 return vbox({
                            text("Are you sure?") | center,
                            separator(),
-                           hbox({yesBtn->Render(), noBtn->Render()}) | center | border
+                           hbox({yes_button->Render(), no_button->Render()}) | center | border
                        }) | center;
             });
-            screen.Loop(confirmView);
+            screen.Loop(popup_component);
             if (confirmed && index < books_db.size()) {
-                // 1) remove record
                 books_db.erase(index);
-                rowComps.erase(rowComps.begin() + index);
+                row_components.erase(row_components.begin() + index);
 
-
-                // simply refresh the entire list screen
                 activeScreen = ListBooksScreen;
                 screen.ExitLoopClosure()();
             }
         });
 
-        // row renderer
-        auto rowRenderer = Renderer(Container::Horizontal({editBtn, delBtn}), [&, index, editBtn, delBtn] {
-            return hbox({
-                hbox(
-                    text(std::to_string(books_db[index].id)) | center | size(WIDTH, EQUAL, 3),
-                    text(books_db[index].ISBN) | center | size(WIDTH, EQUAL, 10),
-                    text(books_db[index].title) | center | size(WIDTH, EQUAL, 40) | color(Color::YellowLight),
-                    text(books_db[index].get_author_name()) | center | size(WIDTH, EQUAL, 20) | color(Color::Blue),
-                    text(books_db[index].get_price_str()) | center | size(WIDTH, EQUAL, 10),
-                    text(std::to_string(books_db[index].copies_sold)) | center | size(WIDTH, EQUAL, 10),
-                    text(books_db[index].get_total_revenue_str()) | center | size(WIDTH, EQUAL, 10) | color(
-                        Color::GreenLight)
-                ),
-                filler(), editBtn->Render(), delBtn->Render()
-            });
-        });
+        auto row_renderer = Renderer(Container::Horizontal({edit_button, delete_button}),
+                                     [&, index, edit_button, delete_button] {
+                                         return hbox({
+                                             hbox(
+                                                 text(std::to_string(books_db[index].id)) | center |
+                                                 size(WIDTH, EQUAL, 3),
+                                                 text(books_db[index].ISBN) | center |
+                                                 size(WIDTH, EQUAL, 10),
+                                                 text(books_db[index].title) | center |
+                                                 size(WIDTH, EQUAL, 40) | color(Color::YellowLight),
+                                                 text(books_db[index].get_author_name()) | center |
+                                                 size(WIDTH, EQUAL, 20) | color(Color::Blue),
+                                                 text(books_db[index].get_price_str()) | center |
+                                                 size(WIDTH, EQUAL, 10),
+                                                 text(std::to_string(books_db[index].copies_sold)) | center |
+                                                 size(WIDTH, EQUAL, 10),
+                                                 text(books_db[index].get_total_revenue_str()) | center |
+                                                 size(WIDTH, EQUAL, 10) | color(Color::GreenLight)
+                                             ),
+                                             filler(), edit_button->Render(), delete_button->Render()
+                                         });
+                                     });
 
-        return rowRenderer;
+        return row_renderer;
     };
 
-    // initial rows
     for (unsigned i = 0; i < books_db.size(); ++i)
-        rowComps.push_back(makeRow(i));
+        row_components.push_back(makeRow(i));
 
-    auto rowsContainer = Container::Vertical(rowComps);
+    auto rows_container = Container::Vertical(row_components);
 
-    // add 3 spaces on the left and right to visually and practically widen the hit-box
-    Component backButton = Button("   Exit   ", [&]() {
+    Component back_button = Button("   Exit   ", [&]() {
         activeScreen = MenuScreen;
         screen.ExitLoopClosure()();
     });
 
-    auto root = Container::Vertical({filterInput, rangeFromInput, rangeToInput, rowsContainer, backButton});
-    // --- main renderer ---
+    auto root = Container::Vertical({
+        filter_ISBN_input,
+        filter_title_input,
+        filter_author_id_input,
+        range_from_input,
+        range_to_input,
+        back_button,
+        rows_container
+    });
     auto renderer = Renderer(root, [&] {
         Elements rows;
 
         rows.push_back(text("=== Main Menu ===") | bold | center);
         rows.push_back(separator());
-        // ---- filters header ----
 
-        rows.push_back(hbox({text("Filter (ISBN / Title / Author): "), filterInput->Render(), filler()}));
-        rows.push_back(hbox({
-            text("From: "), rangeFromInput->Render(),
-            text(" To: "), rangeToInput->Render()
-        }));
+        rows.push_back(hbox(
+                           {
+                               text("   "),
+                               vbox(
+                                   {
+                                       text("ISBN"),
+                                       filter_ISBN_input->Render() | bgcolor(Color::GrayDark),
+                                       text("Title"),
+                                       filter_title_input->Render() | bgcolor(Color::GrayDark)
+                                   }) | flex,
+                               text("   "),
+                               vbox(
+                                   {
+                                       text("Author"),
+                                       filter_author_id_input->Render() | color(Color::GrayDark)
+                                   }) | flex,
+                               text("   "),
+                               vbox(
+                                   {
+                                       text("From: "), range_from_input->Render() | bgcolor(Color::GrayDark),
+                                       text(" To: "), range_to_input->Render() | bgcolor(Color::GrayDark)
+                                   }) | size(WIDTH, EQUAL, 8),
+                               text("   "),
+                               vbox(
+                                   {
+                                       text("All Sales: "),
+                                       text(std::to_string(all_sells)) | bgcolor(Color::DarkGreen),
+                                       text("Avr price: "),
+                                       text([&] {
+                                           std::ostringstream oss;
+                                           if (number_of_books_after_filter > 0) {
+                                               double avg =
+                                                       static_cast<double>(all_price) / number_of_books_after_filter /
+                                                       100.0;
+                                               oss << std::fixed << std::setprecision(2) << avg;
+                                           } else {
+                                               oss << "0.00";
+                                           }
+                                           return oss.str();
+                                       }()) | bgcolor(Color::DarkGreen),
+                                   }) | size(WIDTH, EQUAL, 15),
+
+                               text("      "),
+                               dbox({filler(), back_button->Render() | center, filler()}),
+                               text("      "),
+                           }) | size(HEIGHT, GREATER_THAN, 5));
         rows.push_back(separator());
         rows.push_back(hbox(
             text("ID") | center | bold | size(WIDTH, EQUAL, 3),
@@ -271,131 +336,126 @@ void App::showListBooksScreen() {
         ));
         rows.push_back(separator());
 
-        // Rebuild visible rowsContainer based on current filter/range
-        rowsContainer->DetachAllChildren();
-        for (unsigned i = 0; i < books_db.size(); i++) {
-            const Book &b = books_db[i];
-            // text filter: numeric input matches exact row number, otherwise substring match on name/index
-            if (!filterStr.empty()) {
-                bool match = false;
-                bool isNum = std::all_of(filterStr.begin(), filterStr.end(), ::isdigit);
-                if (isNum) {
-                    unsigned f = std::stoul(filterStr);
-                    match = (i == f);
-                } else {
-                    match = (b.ISBN.find(filterStr) != std::string::npos)
-                            || (b.title.find(filterStr) != std::string::npos)
-                            || (b.get_author_name().find(filterStr) != std::string::npos);
+        rows_container->DetachAllChildren();
+        all_sells = 0;
+        all_price = 0;
+        number_of_books_after_filter = 0;
+        for (size_t i = 0; i < books_db.size(); i++) {
+            const Book &book = books_db[i];
+            if (!filter_ISBN_str.empty() || !filter_title_str.empty() || filter_author_id != author_stop_id) {
+                bool is_match = false;
+                if (!filter_ISBN_str.empty()) {
+                    is_match = (book.ISBN.find(filter_ISBN_str) != std::string::npos) || is_match;
                 }
-                if (!match) continue;
+                if (!filter_title_str.empty()) {
+                    is_match = (book.title.find(filter_title_str) != std::string::npos) || is_match;
+                }
+                if (filter_author_id != author_stop_id) {
+                    is_match = (book.author_id == filter_author_id) || is_match;
+                }
+                if (!is_match) continue;
             }
-            // range filter
-            if (!rangeFromStr.empty() && isNumber(rangeFromStr)) {
-                unsigned fromIdx = std::stoul(rangeFromStr);
-                if (i < fromIdx) continue;
+
+            if (!range_from_str.empty() && is_number(range_from_str)) {
+                if (const size_t from_idx = std::stoul(range_from_str); i < from_idx) continue;
             }
-            if (!rangeToStr.empty() && isNumber(rangeToStr)) {
-                unsigned toIdx = std::stoul(rangeToStr);
-                if (i > toIdx) continue;
+            if (!range_to_str.empty() && is_number(range_to_str)) {
+                if (const unsigned to_idx = std::stoul(range_to_str); i > to_idx) continue;
             }
-            rowsContainer->Add(rowComps[i]);
+            all_sells += books_db[i].copies_sold;
+            all_price += books_db[i].price;
+            number_of_books_after_filter++;
+            rows_container->Add(row_components[i]);
         }
 
         rows.push_back(
-            flex_grow(
-                flex_shrink(
-                    vscroll_indicator(frame(rowsContainer->Render()))
-                )
-            )
+
+            vscroll_indicator(frame(rows_container->Render() | flex))
         );
 
         rows.push_back(separator());
-        rows.push_back(
-            hbox({filler(), backButton->Render(), filler()})
-        );
         rows.push_back(separator());
         return vbox(rows);
     });
-
     screen.Loop(renderer);
 }
 
-void App::showAddBookScreen() {
+void App::show_add_book_screen() {
     std::string ISBN;
     std::string title;
     std::string price_str;
     std::string copies_sold_str;
 
     int selected_author = 0;
-    std::vector<std::string> authors_strings(authors.begin(), authors.end());
+    const std::vector<std::string> authors_strings(authors.begin(), authors.end());
 
-    Component ISBNInput = Input(&ISBN);
-    Component titleInput = Input(&title);
-    Component priceInput = Input(&price_str);
-    Component copiesInput = Input(&copies_sold_str);
-    Component authorSelect = Dropdown(&authors_strings, &selected_author);
+    Component ISBN_input = Input(&ISBN);
+    Component title_input = Input(&title);
+    Component price_input = Input(&price_str);
+    Component copies_input = Input(&copies_sold_str);
+    Component author_dropdown = Dropdown(&authors_strings, &selected_author);
 
-    Component addBtn = Button("Add", [&] {
-        if (!ISBN.empty() && !title.empty() && isNumber(price_str) && isNumber(copies_sold_str)) {
-            int parsed_price = std::stoi(price_str);
-            int parsed_copies_sold = std::stoi(copies_sold_str);
-            Book book(ISBN, title, selected_author, parsed_price, parsed_copies_sold);
+    Component add_button = Button("Add", [&] {
+        if (!ISBN.empty() && !title.empty() && is_number(price_str) && is_number(copies_sold_str)) {
+            const int parsed_price = std::stoi(price_str);
+            const int parsed_copies_sold = std::stoi(copies_sold_str);
+            const Book book(ISBN, title, selected_author, parsed_price, parsed_copies_sold);
             books_db.pushBack(book);
-            showPopUp("Book added!");
+            show_pop_up("Book added!");
         } else {
-            showPopUp("Invalid input!");
+            show_pop_up("Invalid input!");
         }
         activeScreen = MenuScreen;
         screen.ExitLoopClosure()();
     });
 
-    Component cancelBtn = Button("Exit", [&] {
+    Component cancel_button = Button("Exit", [&] {
         activeScreen = MenuScreen;
         screen.ExitLoopClosure()();
     });
 
-    Component form = Container::Vertical({
-        ISBNInput,
-        titleInput,
-        priceInput,
-        copiesInput,
-        authorSelect,
-        addBtn,
-        cancelBtn
+    const Component form = Container::Vertical({
+        ISBN_input,
+        title_input,
+        price_input,
+        copies_input,
+        author_dropdown,
+        add_button,
+        cancel_button
     });
 
-    auto renderer = Renderer(form, [&] {
+    const auto renderer = Renderer(form, [&] {
         return vbox({
                    text("=== Add New Book ===") | bold | center,
                    separator(),
                    window(text(" Book Form "), vbox({
-                              hbox({text("ISBN          : "), ISBNInput->Render()}),
-                              hbox({text("Title         : "), titleInput->Render()}),
-                              hbox({text("Price [gr]    : "), priceInput->Render()}),
-                              hbox({text("Copies Sold   : "), copiesInput->Render()}),
-                              hbox({text("Select Author : "), authorSelect->Render()}),
+                              hbox({text("ISBN          : "), ISBN_input->Render()}),
+                              hbox({text("Title         : "), title_input->Render()}),
+                              hbox({text("Price [gr]    : "), price_input->Render()}),
+                              hbox({text("Copies Sold   : "), copies_input->Render()}),
+                              hbox({text("Select Author : "), author_dropdown->Render()}),
                           })),
                    separator(),
-                   hbox({filler(), addBtn->Render(), text("   "), cancelBtn->Render(), filler()})
+                   hbox({filler(), add_button->Render(), text("   "), cancel_button->Render(), filler()})
                }) | center;
     });
 
     screen.Loop(renderer);
 }
 
-void App::showSaveBookScreen() {
+void App::show_save_book_screen() {
     save_books_to_bin();
-    showPopUp("Saved");
+    show_pop_up("Saved");
     activeScreen = MenuScreen;
 };
 
-void App::showLodeBookScreen() {
+void App::show_lode_book_screen() {
     load_books_from_bin();
-    showPopUp("Loaded");
+    show_pop_up("Loaded");
     activeScreen = MenuScreen;
 };
 
-void App::showBestSealersScreen() {
+void App::show_best_sealers_screen() {
     std::vector<std::pair<size_t, unsigned int> > index_revenue;
     index_revenue.reserve(books_db.size());
 
@@ -403,26 +463,26 @@ void App::showBestSealersScreen() {
         index_revenue.emplace_back(i, books_db[i].get_total_revenue());
     }
 
-    std::sort(index_revenue.begin(), index_revenue.end(),
-              [](const auto &a, const auto &b) {
-                  return a.second > b.second;
-              });
+    std::ranges::sort(index_revenue,
+                      [](const auto &a, const auto &b) {
+                          return a.second > b.second;
+                      });
 
-    size_t number_of_best_sellers = std::min<size_t>(5, index_revenue.size());
+    const size_t number_of_best_sellers = std::min<size_t>(5, index_revenue.size());
 
-    std::vector<Component> rowComps;
-    rowComps.reserve(number_of_best_sellers);
+    std::vector<Component> row_comps;
+    row_comps.reserve(number_of_best_sellers);
 
     for (size_t i = 0; i < number_of_best_sellers; ++i) {
         const Book &b = books_db[index_revenue[i].first];
-        unsigned int revenue = index_revenue[i].second;
+        const unsigned int revenue = index_revenue[i].second;
 
-        std::string revenue_str = std::to_string(revenue / 100) + "." +
-                                  (revenue % 100 < 10 ? "0" : "") +
-                                  std::to_string(revenue % 100) + " PLN";
+        const std::string revenue_str = std::to_string(revenue / 100) + "." +
+                                        (revenue % 100 < 10 ? "0" : "") +
+                                        std::to_string(revenue % 100) + " PLN";
 
-        std::string author = b.get_author_name();
-        std::string position = "#" + std::to_string(i + 1);
+        const std::string author = b.get_author_name();
+        const std::string position = "#" + std::to_string(i + 1);
 
         auto row = Renderer([=] {
             return hbox({
@@ -435,19 +495,19 @@ void App::showBestSealersScreen() {
             });
         });
 
-        rowComps.push_back(row);
+        row_comps.push_back(row);
     }
 
-    auto rowsContainer = Container::Vertical(rowComps);
+    auto rows_container = Container::Vertical(row_comps);
 
-    Component backButton = Button("   Back   ", [&]() {
+    Component back_button = Button("   Back   ", [&]() {
         activeScreen = MenuScreen;
         screen.ExitLoopClosure()();
     });
 
-    auto root = Container::Vertical({rowsContainer, backButton});
+    const auto root = Container::Vertical({rows_container, back_button});
 
-    auto renderer = Renderer(root, [&] {
+    const auto renderer = Renderer(root, [&] {
         Elements rows;
 
         rows.push_back(text("=== Top 5 Best Sellers ===") | bold | center);
@@ -455,12 +515,12 @@ void App::showBestSealersScreen() {
 
         rows.push_back(window(text(" Bestseller Ranking "), vbox({
                                   separator(),
-                                  rowsContainer->Render(),
+                                  rows_container->Render(),
                                   separator()
                               })));
 
         rows.push_back(separator());
-        rows.push_back(hbox({filler(), backButton->Render(), filler()}));
+        rows.push_back(hbox({filler(), back_button->Render(), filler()}));
 
         return vbox(rows) | center;
     });
@@ -468,8 +528,8 @@ void App::showBestSealersScreen() {
     screen.Loop(renderer);
 }
 
-void App::showBooksStatisticsScreen() {
-    size_t book_count = books_db.size();
+void App::show_books_statistics_screen() {
+    const size_t book_count = books_db.size();
     unsigned int total_copies_sold = 0;
     unsigned int total_revenue = 0;
     unsigned int total_price = 0;
@@ -493,17 +553,16 @@ void App::showBooksStatisticsScreen() {
         }
     }
 
-    auto format_money = [](unsigned int grosze) {
-        unsigned int zl = grosze / 100;
-        unsigned int gr = grosze % 100;
+    auto format_money = [](const unsigned int grosze) {
+        const unsigned int zl = grosze / 100;
+        const unsigned int gr = grosze % 100;
         return std::to_string(zl) + "." + (gr < 10 ? "0" : "") + std::to_string(gr) + " PLN";
     };
 
-    std::string avg_price_str = (book_count > 0) ? format_money(total_price / book_count) : "0.00 PLN";
+    const std::string avg_price_str = (book_count > 0) ? format_money(total_price / book_count) : "0.00 PLN";
 
-    std::vector<Component> rowComps;
 
-    auto makeRow = [](const std::string &label, const std::string &value, Color value_color = Color::White) {
+    auto make_row = [](const std::string &label, const std::string &value, const Color value_color = Color::White) {
         return Renderer([=] {
             return hbox({
                 text(label + ": ") | bold | color(Color::YellowLight),
@@ -513,22 +572,23 @@ void App::showBooksStatisticsScreen() {
         });
     };
 
-    rowComps.push_back(makeRow("Number of Books", std::to_string(book_count)));
-    rowComps.push_back(makeRow("Number of Books Sold", std::to_string(total_copies_sold)));
-    rowComps.push_back(makeRow("Total Revenue", format_money(total_revenue), Color::GreenLight));
-    rowComps.push_back(makeRow("Average Book Price", avg_price_str, Color::GreenLight));
-    rowComps.push_back(makeRow("Most Published Author", most_published_author, Color::Blue));
+    std::vector<Component> row_comps;
+    row_comps.push_back(make_row("Number of Books", std::to_string(book_count)));
+    row_comps.push_back(make_row("Number of Books Sold", std::to_string(total_copies_sold)));
+    row_comps.push_back(make_row("Total Revenue", format_money(total_revenue), Color::GreenLight));
+    row_comps.push_back(make_row("Average Book Price", avg_price_str, Color::GreenLight));
+    row_comps.push_back(make_row("Most Published Author", most_published_author, Color::Blue));
 
-    auto rowsContainer = Container::Vertical(rowComps);
+    auto rows_container = Container::Vertical(row_comps);
 
-    Component backButton = Button("   Back   ", [&]() {
+    Component back_button = Button("   Back   ", [&]() {
         activeScreen = MenuScreen;
         screen.ExitLoopClosure()();
     });
 
-    auto root = Container::Vertical({rowsContainer, backButton});
+    const auto root = Container::Vertical({rows_container, back_button});
 
-    auto renderer = Renderer(root, [&] {
+    const auto renderer = Renderer(root, [&] {
         Elements rows;
 
         rows.push_back(text("=== Book Statistics ===") | bold | center);
@@ -537,13 +597,13 @@ void App::showBooksStatisticsScreen() {
         rows.push_back(
             window(text(" Statistics Summary "), vbox({
                        separator(),
-                       rowsContainer->Render(),
+                       rows_container->Render(),
                        separator()
                    }))
         );
 
         rows.push_back(separator());
-        rows.push_back(hbox({filler(), backButton->Render(), filler()}));
+        rows.push_back(hbox({filler(), back_button->Render(), filler()}));
 
         return vbox(rows) | center;
     });
@@ -554,19 +614,19 @@ void App::showBooksStatisticsScreen() {
 void App::run() {
     while (activeScreen != Exit) {
         switch (activeScreen) {
-            case AddBookScreen: showAddBookScreen();
+            case AddBookScreen: show_add_book_screen();
                 break;
-            case MenuScreen: showMenu();
+            case MenuScreen: show_menu();
                 break;
             case ListBooksScreen: showListBooksScreen();
                 break;
-            case SaveBookScreen: showSaveBookScreen();
+            case SaveBookScreen: show_save_book_screen();
                 break;
-            case LodeBookScreen: showLodeBookScreen();
+            case LodeBookScreen: show_lode_book_screen();
                 break;
-            case BestSealers: showBestSealersScreen();
+            case BestSealers: show_best_sealers_screen();
                 break;
-            case BooksStatistics: showBooksStatisticsScreen();
+            case BooksStatistics: show_books_statistics_screen();
                 break;
             default: activeScreen = MenuScreen;
                 break;

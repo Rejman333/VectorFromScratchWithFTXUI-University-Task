@@ -25,6 +25,7 @@ add_executable(JiPP_project_app
         src/book/book.h
         src/app/App.cpp
         src/app/App.h
+
 )
 
 target_link_libraries(JiPP_project_app JiPP_project_smartArray)

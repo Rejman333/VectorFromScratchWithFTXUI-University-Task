@@ -10,7 +10,6 @@
 using namespace ftxui;
 
 enum ActiveScreen {
-    EditScreen = -2,
     MenuScreen = -1,
     AddBookScreen = 0,
     ListBooksScreen,
@@ -41,23 +40,21 @@ class App {
     const std::string binFile = "../books.bin";
 
 
-    void showMenu();
+    void show_menu();
 
     void showListBooksScreen();
 
-    void showAddBookScreen();
+    void show_add_book_screen();
 
-    void showSaveBookScreen();
+    void show_save_book_screen();
 
-    void showLodeBookScreen();
+    void show_lode_book_screen();
 
-    void showBestSealersScreen();
+    void show_best_sealers_screen();
 
-    void showBooksStatisticsScreen();
+    void show_books_statistics_screen();
 
-    void showPopUp(const std::string &message);
-
-    void showEditScreen();
+    void show_pop_up(const std::string &message);
 
     void save_books_to_bin();
 
